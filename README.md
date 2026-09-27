@@ -1,8 +1,47 @@
+<p align="center">
+  <img src="plugin/logo.png" width="168" alt="Live Translate">
+</p>
+
 # Live Translate
 
 在 **Bob** 中提供实时中文字幕的翻译插件，配套一个 macOS 麦克风伴随应用。
 
 在 Bob 翻译弹窗输入 `live` 即可开始：伴随应用用麦克风采集英语语音，经 Deepgram 转写、实时翻译后，字幕同时显示在 Bob 卡片、独立字幕浮窗和课程归档中。
+
+## 安装
+
+### 1. 下载
+
+到 [Releases 页面](https://github.com/AllenYGY/LiveTranslateBobPlugin/releases/latest) 下载两个文件（无需自己编译）：
+
+| 文件 | 说明 |
+| --- | --- |
+| `LiveTranslate.bobplugin` | Bob 插件包 |
+| `LiveTranslate-macOS-1.2.0.zip` | 伴随应用，解压后得到 `LiveTranslate.app` |
+
+### 2. 安装伴随应用
+
+将 `LiveTranslate.app` 解压并放入「应用程序」，双击打开。**它需要保持运行**，负责麦克风采集与语音识别。
+
+> 应用为 ad-hoc 签名、未公证：首次打开若被 Gatekeeper 拦截，右键点击应用 →「打开」，或在终端执行 `xattr -cr /Applications/LiveTranslate.app` 后重新打开。
+
+### 3. 安装 Bob 插件
+
+双击 `LiveTranslate.bobplugin`，按 Bob 提示完成安装。
+
+### 4. 配置密钥（仅需在 Bob 中完成一次）
+
+打开 **Bob → Services → Text Translate → Live Translate**：
+
+| 设置项 | 说明 |
+| --- | --- |
+| Deepgram API Key (live speech) | 必填，课堂实时语音识别 |
+| Live translation engine | `Apple System Translate`（默认）或 `Volcengine` |
+| Volcengine Access Key ID / Secret Access Key | 选择火山翻译时必填 |
+
+### 5. 开始使用
+
+在 Bob 翻译弹窗输入 `live` 开启实时英译中字幕，输入 `stop` 停止。首次使用会请求麦克风权限，请允许。
 
 ## 工作原理
 
@@ -28,47 +67,7 @@ Bob 插件（Live Translate）◄──── 轮询快照 ───────
 - 归档持久化：每段译文完成即保存，应用意外退出也不丢失已完成内容
 - 密钥只在 Bob 中配置一次（存入钥匙串），伴随应用没有重复的设置页
 
-## 系统要求
-
-- macOS 26 或更新版本（依赖系统翻译框架，当前为 arm64 构建）
-- 已安装「英语 → 简体中文」翻译语言包（Apple System Translate 需要）
-- [Deepgram](https://deepgram.com) API Key（英文语音识别）
-- Bob 1.21.0 或更新版本
-- 选择火山翻译时，还需火山引擎 Access Key ID / Secret Access Key
-
-## 构建与安装
-
-### 直接下载（推荐）
-
-到 GitHub Releases 页面下载即可，无需自己编译：
-
-- `LiveTranslate.bobplugin` — Bob 插件包
-- `LiveTranslate-macOS-1.2.0.zip` — 伴随应用，解压得到 `LiveTranslate.app`
-
-应用为 ad-hoc 签名、未公证，首次打开若被 Gatekeeper 拦截，右键点击应用 →「打开」，或在终端执行 `xattr -cr /Applications/LiveTranslate.app` 后重新打开。
-
-### 自行构建
-
-```bash
-./scripts/test-app.sh   # 生成 dist/LiveTranslate.app
-./scripts/test.sh       # 生成 dist/LiveTranslate.bobplugin
-```
-
-1. 将 `dist/LiveTranslate.app` 放到本机可持续运行的位置（例如「应用程序」），双击打开。
-2. 双击 `dist/LiveTranslate.bobplugin` 安装 Bob 插件。
-3. 重新构建后，先退出旧版应用再打开新版。
-
 ## 使用
-
-### 第一次配置（仅需在 Bob 中完成一次）
-
-打开 **Bob → Services → Text Translate → Live Translate**：
-
-| 设置项 | 说明 |
-| --- | --- |
-| Deepgram API Key (live speech) | 必填，课堂实时语音识别 |
-| Live translation engine | `Apple System Translate`（默认）或 `Volcengine` |
-| Volcengine Access Key ID / Secret Access Key | 选择火山翻译时必填 |
 
 ### 开始 / 停止
 
@@ -91,6 +90,14 @@ Bob 插件（Live Translate）◄──── 轮询快照 ───────
 - 每段英文及最终译文都会及时保存，应用意外退出也能保留已完成内容。
 - 若归档损坏或来自更新版本，应用会保留原文件并继续运行，绝不覆盖。
 
+## 系统要求
+
+- macOS 26 或更新版本（依赖系统翻译框架，当前为 arm64 构建）
+- 已安装「英语 → 简体中文」翻译语言包（Apple System Translate 需要）
+- [Deepgram](https://deepgram.com) API Key（英文语音识别）
+- Bob 1.21.0 或更新版本
+- 选择火山翻译时，还需火山引擎 Access Key ID / Secret Access Key
+
 ## 安全与隐私
 
 - 插件与伴随应用仅在本机 `127.0.0.1:17764` 通信；本地桥会拒绝带 `Origin` 头的请求。
@@ -101,6 +108,17 @@ Bob 插件（Live Translate）◄──── 轮询快照 ───────
 
 - Bob 插件最长可设置 300 秒超时，长课超过此限制时需重新输入 `live`；实际超时行为与 Bob 版本有关，仍需实机确认。
 - 关闭字幕浮窗不会清空主窗口的复习记录。
+
+## 自行构建
+
+```bash
+./scripts/test-app.sh   # 生成 dist/LiveTranslate.app
+./scripts/test.sh       # 生成 dist/LiveTranslate.bobplugin
+```
+
+1. 将 `dist/LiveTranslate.app` 放到本机可持续运行的位置（例如「应用程序」），双击打开。
+2. 双击 `dist/LiveTranslate.bobplugin` 安装 Bob 插件。
+3. 重新构建后，先退出旧版应用再打开新版。
 
 ## 项目结构
 
