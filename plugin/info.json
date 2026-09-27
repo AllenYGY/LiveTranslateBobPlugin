@@ -1,34 +1,23 @@
 {
   "identifier": "com.allenygy.live.translate",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "category": "translate",
-  "name": "Live Translate EN→ZH",
-  "summary": "Direct English-to-Chinese cloud translation in Bob",
+  "name": "Live Translate · 火山翻译",
+  "summary": "Volcengine English-to-Chinese translation alongside Bob System Translate",
   "author": "Allen YGY",
   "minBobVersion": "1.21.0",
   "options": [
     {
-      "identifier": "api_key",
+      "identifier": "access_key_id",
       "type": "text",
-      "title": "API Key",
-      "textConfig": { "type": "secure", "placeholderText": "填写 DeepSeek 或兼容服务的 API Key" },
-      "desc": "密钥只保存在 Bob 的插件设置中"
+      "title": "Volcengine Access Key ID",
+      "textConfig": { "type": "secure", "placeholderText": "填写火山引擎 Access Key ID" }
     },
     {
-      "identifier": "base_url",
+      "identifier": "secret_access_key",
       "type": "text",
-      "title": "API URL",
-      "defaultValue": "https://api.deepseek.com/v1",
-      "textConfig": { "type": "visible" },
-      "desc": "默认 DeepSeek；其他 OpenAI 兼容服务可修改"
-    },
-    {
-      "identifier": "model",
-      "type": "text",
-      "title": "Model",
-      "defaultValue": "deepseek-chat",
-      "textConfig": { "type": "visible" },
-      "desc": "默认 deepseek-chat"
+      "title": "Volcengine Secret Access Key",
+      "textConfig": { "type": "secure", "placeholderText": "填写火山引擎 Secret Access Key" }
     }
   ]
 }

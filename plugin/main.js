@@ -1,58 +1,71 @@
-// Standalone Bob text translation service. Bob stores the key and calls the cloud API directly.
+// Volcengine Machine Translation for Bob. Apple System Translate is Bob's built-in service.
+var HOST = "translate.volcengineapi.com";
+var QUERY = "Action=TranslateText&Version=2020-06-01";
+
 function supportLanguages() {
     return ["en", "zh-Hans"];
 }
 
-function configuration() {
-    var key = String($option.api_key || "").trim();
-    var baseURL = String($option.base_url || "https://api.deepseek.com/v1").trim().replace(/\/+$/, "");
-    var model = String($option.model || "deepseek-chat").trim();
-    if (!key) return { error: { type: "secretKey", message: "请在 Bob 的插件设置中填写 API Key。" } };
-    if (!/^https:\/\//i.test(baseURL) || !model) {
-        return { error: { type: "param", message: "请检查 API URL 和 Model。" } };
-    }
+function signRequest(bodyText, accessKeyID, secretAccessKey, date) {
+    var CryptoJS = require("crypto-js");
+    var xDate = date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    var shortDate = xDate.slice(0, 8);
+    var scope = shortDate + "/cn-north-1/translate/request";
+    var signedHeaders = "content-type;host;x-date";
+    var canonicalRequest = [
+        "POST", "/", QUERY,
+        "content-type:application/json\nhost:" + HOST + "\nx-date:" + xDate + "\n",
+        signedHeaders,
+        CryptoJS.SHA256(bodyText).toString(CryptoJS.enc.Hex)
+    ].join("\n");
+    var stringToSign = [
+        "HMAC-SHA256", xDate, scope,
+        CryptoJS.SHA256(canonicalRequest).toString(CryptoJS.enc.Hex)
+    ].join("\n");
+    var kDate = CryptoJS.HmacSHA256(shortDate, secretAccessKey);
+    var kRegion = CryptoJS.HmacSHA256("cn-north-1", kDate);
+    var kService = CryptoJS.HmacSHA256("translate", kRegion);
+    var kSigning = CryptoJS.HmacSHA256("request", kService);
+    var signature = CryptoJS.HmacSHA256(stringToSign, kSigning).toString(CryptoJS.enc.Hex);
     return {
-        key: key,
-        url: /\/chat\/completions$/i.test(baseURL) ? baseURL : baseURL + "/chat/completions",
-        model: model
+        "Content-Type": "application/json",
+        "Host": HOST,
+        "X-Date": xDate,
+        "Authorization": "HMAC-SHA256 Credential=" + accessKeyID + "/" + scope + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature
     };
 }
 
 function requestTranslation(text, handler) {
-    var config = configuration();
-    if (config.error) { handler(config.error); return; }
+    var accessKeyID = String($option.access_key_id || "").trim();
+    var secretAccessKey = String($option.secret_access_key || "").trim();
+    if (!accessKeyID || !secretAccessKey) {
+        handler({ type: "secretKey", message: "请在 Bob 中填写火山翻译 Access Key ID 和 Secret Access Key。" });
+        return;
+    }
+    var bodyText = JSON.stringify({ TargetLanguage: "zh", TextList: [text] });
+    var headers = signRequest(bodyText, accessKeyID, secretAccessKey, new Date());
     $http.request({
         method: "POST",
-        url: config.url,
-        header: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + config.key
-        },
-        body: {
-            model: config.model,
-            stream: false,
-            temperature: 0.2,
-            messages: [
-                { role: "system", content: "Translate the user's English text into Simplified Chinese. Output only the translation. Preserve names, numbers, and paragraph breaks." },
-                { role: "user", content: text }
-            ]
-        },
+        url: "https://" + HOST + "/?" + QUERY,
+        header: headers,
+        body: $data.fromUTF8(bodyText),
         timeout: 30,
         handler: function (response) {
             if (response.error) {
-                handler({ type: "network", message: "云服务请求失败，请检查 API Key、网络和服务配置。" });
+                handler({ type: "network", message: "火山翻译请求失败，请检查网络和 Access Key。" });
                 return;
             }
             try {
                 var data = typeof response.data === "string" ? JSON.parse(response.data) : response.data;
-                var output = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+                var item = data && data.TranslationList && data.TranslationList[0];
+                var output = item && item.Translation;
                 if (!output || !String(output).trim()) {
-                    handler({ type: "api", message: "云服务未返回译文，请检查 API Key 和 Model。" });
+                    handler({ type: "api", message: "火山翻译未返回译文，请检查密钥和服务权限。" });
                     return;
                 }
                 handler(null, String(output).trim());
             } catch (_) {
-                handler({ type: "api", message: "云服务返回了无效数据。" });
+                handler({ type: "api", message: "火山翻译返回了无效数据。" });
             }
         }
     });
@@ -69,11 +82,9 @@ function translate(query, completion) {
         return;
     }
     requestTranslation(text, function (error, output) {
-        if (error) { query.onCompletion({ error: error }); return; }
-        query.onCompletion({ result: {
-            from: "en", to: "zh-Hans",
-            content: { format: "plain", text: output }
-        } });
+        query.onCompletion(error ? { error: error } : {
+            result: { from: "en", to: "zh-Hans", content: { format: "plain", text: output } }
+        });
     });
 }
 
