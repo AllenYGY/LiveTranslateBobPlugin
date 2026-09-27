@@ -29,7 +29,9 @@ final class SubtitleWindowController {
             panel.isMovableByWindowBackground = true
             panel.isReleasedWhenClosed = false
             panel.minSize = NSSize(width: 600, height: 190)
-            panel.backgroundColor = .black
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = false
             panel.contentView = NSHostingView(rootView: SubtitleWindowView().environmentObject(model))
             self.panel = panel
         }
@@ -39,6 +41,7 @@ final class SubtitleWindowController {
 
 private struct SubtitleWindowView: View {
     @EnvironmentObject private var model: LiveTranslateModel
+    @AppStorage("subtitleWindowOpacity") private var backgroundOpacity = 0.85
 
     private var current: (source: String, translation: String)? {
         if !model.interim.isEmpty {
@@ -57,7 +60,19 @@ private struct SubtitleWindowView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.7))
                 Spacer()
-                Text("拖动窗口 · 可调整大小")
+                Image(systemName: "drop.halffull")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.45))
+                Slider(value: $backgroundOpacity, in: 0.25...1.0)
+                    .frame(width: 110)
+                    .controlSize(.small)
+                    .tint(.white)
+                    .help("调整字幕背景透明度")
+                Text("\(Int((backgroundOpacity * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.45))
+                    .frame(width: 38, alignment: .trailing)
+                Text("拖动 · 缩放")
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.35))
             }
@@ -85,6 +100,8 @@ private struct SubtitleWindowView: View {
         .multilineTextAlignment(.center)
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.93))
+        .background(Color.black.opacity(backgroundOpacity))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
     }
 }
