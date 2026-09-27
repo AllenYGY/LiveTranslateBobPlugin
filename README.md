@@ -17,7 +17,7 @@
 | 文件 | 说明 |
 | --- | --- |
 | `LiveTranslate.bobplugin` | Bob 插件包 |
-| `LiveTranslate-macOS-1.2.0.zip` | 伴随应用，解压后得到 `LiveTranslate.app` |
+| `LiveTranslate-macOS-1.3.0.zip` | 伴随应用，解压后得到 `LiveTranslate.app` |
 
 ### 2. 安装伴随应用
 

@@ -22,7 +22,7 @@ python3 - "$CHECK_DIR/LiveTranslate.app" <<'PY'
 import pathlib, plistlib, sys
 app = pathlib.Path(sys.argv[1])
 info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-assert info['CFBundleShortVersionString'] == '1.2.0'
+assert info['CFBundleShortVersionString'] == '1.3.0'
 assert info['CFBundleIconFile'] == 'LiveTranslate.icns'
 assert (app / 'Contents/Resources/LiveTranslate.icns').is_file()
 PY
