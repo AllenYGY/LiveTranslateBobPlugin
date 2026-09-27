@@ -48,7 +48,7 @@ final class DeepgramTranscriptionProvider: NSObject, TranscriptionProvider, URLS
         guard let url = makeURL(language: language, targetLanguage: targetLanguage),
               let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : apiKey.trimmingCharacters(in: .whitespacesAndNewlines) else {
-            emitState(.failed("Deepgram API Key 无效，请在设置中填写"), generation: generation)
+            emitState(.failed("Deepgram API Key 无效，请在 Bob → Services → Live Translate 中填写"), generation: generation)
             return
         }
 

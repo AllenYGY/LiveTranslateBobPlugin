@@ -6,5 +6,6 @@ python3 -m json.tool "$ROOT_DIR/dist/LiveTranslate.bobplugin/info.json" >/dev/nu
 node --check "$ROOT_DIR/dist/LiveTranslate.bobplugin/main.js"
 files="$(find "$ROOT_DIR/dist/LiveTranslate.bobplugin" -type f | wc -l | tr -d ' ')"
 [[ "$files" == 3 ]]
+cmp "$ROOT_DIR/plugin/logo.png" "$ROOT_DIR/dist/LiveTranslate.bobplugin/icon.png"
 node "$ROOT_DIR/scripts/test-plugin.js"
 echo 'Plugin package and callback tests passed'

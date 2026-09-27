@@ -5,9 +5,10 @@
 <key>CFBundleName</key><string>LiveTranslate</string>
 <key>CFBundleDisplayName</key><string>Live Translate</string>
 <key>CFBundleExecutable</key><string>LiveTranslate</string>
+<key>CFBundleIconFile</key><string>LiveTranslate.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>1.2.0</string>
+<key>CFBundleVersion</key><string>4</string>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>NSMicrophoneUsageDescription</key><string>Live Translate uses the microphone for English live captions and translation.</string>
 </dict></plist>

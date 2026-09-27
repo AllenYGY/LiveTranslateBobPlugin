@@ -1,12 +1,28 @@
 {
   "identifier": "com.allenygy.live.translate",
-  "version": "2.0.0",
+  "version": "2.3.1",
   "category": "translate",
-  "name": "Live Translate · 火山翻译",
-  "summary": "Volcengine English-to-Chinese translation alongside Bob System Translate",
+  "name": "Live Translate",
+  "summary": "English speech to Chinese live captions in Bob. Type live to start; stop to stop.",
   "author": "Allen YGY",
   "minBobVersion": "1.21.0",
   "options": [
+    {
+      "identifier": "deepgram_api_key",
+      "type": "text",
+      "title": "Deepgram API Key (live speech)",
+      "textConfig": { "type": "secure", "placeholderText": "课堂实时语音识别所需" }
+    },
+    {
+      "identifier": "translation_backend",
+      "type": "menu",
+      "title": "Live translation engine",
+      "defaultValue": "apple",
+      "menuValues": [
+        { "title": "Apple System Translate (default)", "value": "apple" },
+        { "title": "Volcengine", "value": "volcengine" }
+      ]
+    },
     {
       "identifier": "access_key_id",
       "type": "text",

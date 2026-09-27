@@ -1,39 +1,65 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const crypto = require('crypto');
 const assert = require('assert');
-
-const source = fs.readFileSync(path.join(__dirname, '../plugin/main.js'), 'utf8');
-const word = bytes => ({ bytes, toString: () => bytes.toString('hex') });
-const CryptoJS = {
-  enc: { Hex: {} },
-  SHA256: value => word(crypto.createHash('sha256').update(value).digest()),
-  HmacSHA256: (value, key) => word(crypto.createHmac('sha256', key.bytes || key).update(value).digest())
-};
-let request;
+const info = JSON.parse(fs.readFileSync(path.join(__dirname, '../plugin/info.json')));
+assert.strictEqual(info.name, 'Live Translate');
+assert.strictEqual(info.category, 'translate');
+assert.ok(info.options.some(o => o.identifier === 'deepgram_api_key' && o.textConfig.type === 'secure'));
+assert.strictEqual(info.options.find(o => o.identifier === 'translation_backend').defaultValue, 'apple');
+const requests = [];
+let timer;
+let cancelled;
 const context = {
-  require: name => { assert.strictEqual(name, 'crypto-js'); return CryptoJS; },
-  $data: { fromUTF8: value => ({ text: value }) },
-  $option: { access_key_id: 'test-id', secret_access_key: 'test-secret' },
-  $http: { request: value => { request = value; value.handler({ data: { TranslationList: [{ Translation: '你好，同学们。' }] } }); } }
+  $option: { deepgram_api_key: 'test-key', translation_backend: 'apple' },
+  $http: { request: req => { requests.push(req); } },
+  $timer: { schedule: options => { timer = options; return 7; }, invalidate: id => assert.strictEqual(id, 7) }
 };
 vm.createContext(context);
-vm.runInContext(source, context);
-const body = JSON.stringify({ TargetLanguage: 'zh', TextList: ['Hello class.'] });
-const signed = context.signRequest(body, 'test-id', 'test-secret', new Date('2026-09-27T01:02:03Z'));
-assert.strictEqual(signed['X-Date'], '20260927T010203Z');
-assert.ok(signed.Authorization.endsWith('Signature=da15850d2eb97a907e457b637cc89305e1b9ef9793e5360ed6e6e7005443518a'));
-let callback;
-context.translate({ text: 'Hello class.', detectFrom: 'en', onCompletion: value => { callback = value; } });
-assert.strictEqual(request.url, 'https://translate.volcengineapi.com/?Action=TranslateText&Version=2020-06-01');
-assert.strictEqual(request.body.text, body);
-assert.strictEqual(callback.result.content.text, '你好，同学们。');
-assert.strictEqual(callback.result.to, 'zh-Hans');
-context.$option.secret_access_key = '';
-context.translate({ text: 'Hello', detectFrom: 'en', onCompletion: value => { callback = value; } });
-assert.strictEqual(callback.error.type, 'secretKey');
-context.$option.secret_access_key = 'test-secret';
-context.$http.request = value => value.handler({ error: 'network failed' });
-context.translate({ text: 'Hello', detectFrom: 'en', onCompletion: value => { callback = value; } });
-assert.strictEqual(callback.error.type, 'network');
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../plugin/main.js'), 'utf8'), context);
+assert.strictEqual(context.pluginTimeoutInterval(), 300);
+let streams = [];
+let completion;
+context.translate({ text: '/live', onStream: value => streams.push(value), onCompletion: value => { completion = value; },
+  cancelSignal: { subscribe: handler => { cancelled = handler; return { dispose() {} }; } } });
+assert.strictEqual(requests[0].url, 'http://127.0.0.1:17764/start');
+assert.strictEqual(requests[0].body.deepgramKey, 'test-key');
+assert.strictEqual(requests[0].body.backend, 'apple');
+requests[0].handler({ data: { ok: true, session: 'test-session' } });
+assert.strictEqual(requests[1].url, 'http://127.0.0.1:17764/snapshot');
+requests[1].handler({ data: { ok: true, running: true, segments: [{ source: 'Hello', translation: '你好' }] } });
+assert.strictEqual(streams[0].content.format, 'markdown');
+assert.strictEqual(streams[0].content.text, '> Hello\n\n### 你好');
+timer.handler();
+requests[2].handler({ data: { ok: true, running: true, segments: [{ source: 'Hello', translation: '你好' }], interim: 'World' } });
+assert.strictEqual(streams[1].content.text, '> Hello\n\n### 你好\n\n---\n\n> 🎙 World\n\n### 识别中…');
+const rolling = context.render({ segments: [
+  { source: 'Old 1', translation: '旧一' },
+  { source: 'Old 2', translation: '旧二' },
+  { source: 'New 3', translation: '新三' }
+] });
+assert.ok(!rolling.includes('Old 1'));
+assert.ok(rolling.includes('Old 2') && rolling.includes('New 3'));
+assert.ok(context.render({ segments: [{ source: '*Hello*', translation: '#你好' }] }).includes('\\*Hello\\*'));
+cancelled();
+assert.strictEqual(requests[3].url, 'http://127.0.0.1:17764/stop');
+assert.strictEqual(requests[3].body.session, 'test-session');
+assert.strictEqual(completion, undefined);
+context.$option.deepgram_api_key = '';
+context.translate({ text: '/live', onCompletion: value => { completion = value; } });
+assert.strictEqual(completion.error.type, 'secretKey');
+context.$option.deepgram_api_key = 'test-key';
+context.translate({ text: '/live', onStream() {}, onCompletion() {},
+  cancelSignal: { subscribe: handler => { cancelled = handler; return { dispose() {} }; } } });
+const pending = requests[4];
+cancelled();
+pending.handler({ data: { ok: true, session: 'late-session' } });
+assert.strictEqual(requests[5].url, 'http://127.0.0.1:17764/stop');
+assert.strictEqual(requests[5].body.session, 'late-session');
+context.translate({ text: 'live', onStream() {}, onCompletion() {} });
+assert.strictEqual(requests[6].url, 'http://127.0.0.1:17764/start');
+let stopResult;
+context.translate({ text: 'stop', onCompletion: value => { stopResult = value; } });
+assert.strictEqual(requests[7].url, 'http://127.0.0.1:17764/stop');
+requests[7].handler({ data: { ok: true } });
+assert.strictEqual(stopResult.result.content.text, '实时翻译已停止。');

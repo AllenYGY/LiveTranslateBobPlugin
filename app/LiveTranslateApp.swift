@@ -26,13 +26,18 @@ final class LiveTranslateModel: ObservableObject {
     @Published private(set) var segments: [CaptionSegment] = []
     @Published private(set) var interim = ""
     @Published private(set) var interimTranslation = ""
-    @Published private(set) var settingsMessage = ""
+    @Published private(set) var archiveLibrary: ArchiveLibrary
+    @Published private(set) var archiveMessage = ""
+    private(set) var sessionID: String?
 
     private let audio = AudioCaptureManager()
     private let provider = DeepgramTranscriptionProvider(apiKey: "")
     private var assembler = LiveUtteranceAssembler()
     private var previewTask: Task<Void, Never>?
     private var generation = 0
+    private let archiveRepository = ArchiveRepository()
+    private var archiveWritable = true
+    private var activeLessonID: UUID?
 
     init() {
         deepgramAPIKey = KeychainStore.read("deepgram")
@@ -41,20 +46,27 @@ final class LiveTranslateModel: ObservableObject {
         translationBackend = TranslationBackend(
             rawValue: UserDefaults.standard.string(forKey: "translationBackend") ?? "apple"
         ) ?? .apple
+        do {
+            archiveLibrary = try archiveRepository.load()
+        } catch {
+            archiveLibrary = .initial()
+            archiveWritable = false
+            archiveMessage = "归档读取失败，原文件已保留：\(error.localizedDescription)"
+        }
         provider.onResult = { [weak self] result in self?.consume(result) }
         provider.onStateChange = { [weak self] state in self?.updateState(state) }
     }
 
     private func saveKey(_ value: String, _ account: String) {
         if !KeychainStore.save(value, for: account) {
-            settingsMessage = "密钥未能保存到钥匙串，请重试。"
+            status = "密钥未能保存到钥匙串"
         }
     }
 
     func start() async {
         guard !isRunning else { return }
         guard !deepgramAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            status = "请先在设置中填写 Deepgram API Key"
+            status = "请在 Bob → Services → Live Translate 填写 Deepgram API Key"
             return
         }
         guard await audio.requestPermission() else {
@@ -73,6 +85,10 @@ final class LiveTranslateModel: ObservableObject {
             try audio.start()
             isRunning = true
             status = "连接 Deepgram…"
+            var library = archiveLibrary
+            activeLessonID = library.beginLesson()
+            saveArchive(library)
+            SubtitleWindowController.shared.show(model: self)
         } catch {
             provider.stop()
             audio.stop()
@@ -91,12 +107,81 @@ final class LiveTranslateModel: ObservableObject {
         interim = ""
         interimTranslation = ""
         status = "已停止"
+        sessionID = nil
+        finishActiveLesson()
     }
 
     func clear() {
         segments.removeAll()
         interim = ""
         interimTranslation = ""
+    }
+
+    func addCourse(_ name: String) {
+        guard !isRunning else { return }
+        var library = archiveLibrary
+        if library.addCourse(name) != nil { saveArchive(library) }
+    }
+
+    func selectCourse(_ id: UUID) {
+        guard !isRunning else { return }
+        var library = archiveLibrary
+        library.selectCourse(id)
+        saveArchive(library)
+    }
+
+    func renameLesson(_ id: UUID, to title: String) {
+        var library = archiveLibrary
+        library.renameLesson(id, to: title)
+        saveArchive(library)
+    }
+
+    private func saveArchive(_ library: ArchiveLibrary) {
+        archiveLibrary = library
+        guard archiveWritable else { return }
+        do {
+            try archiveRepository.save(library)
+            archiveMessage = ""
+        } catch {
+            archiveMessage = "归档保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func finishActiveLesson() {
+        guard let id = activeLessonID else { return }
+        activeLessonID = nil
+        var library = archiveLibrary
+        library.finishLesson(id)
+        saveArchive(library)
+    }
+
+    func configureAndStart(deepgramKey: String, backend: String, accessKeyID: String, secretAccessKey: String) async -> String? {
+        guard !deepgramKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            status = "请在 Bob 服务设置中填写 Deepgram API Key"
+            return nil
+        }
+        if isRunning { stop() }
+        deepgramAPIKey = deepgramKey
+        translationBackend = backend == "volcengine" ? .volcengine : .apple
+        if !accessKeyID.isEmpty { volcengineAccessKeyID = accessKeyID }
+        if !secretAccessKey.isEmpty { volcengineSecretAccessKey = secretAccessKey }
+        clear()
+        await start()
+        guard isRunning else { return nil }
+        let id = UUID().uuidString
+        sessionID = id
+        return id
+    }
+
+    func snapshot() -> [String: Any] {
+        ["ok": true, "running": isRunning, "status": status,
+         "segments": segments.suffix(2).map { ["source": $0.source, "translation": $0.translation ?? ""] },
+         "interim": interim, "interimTranslation": interimTranslation]
+    }
+
+    func stop(session: String?) {
+        guard session == nil || session == sessionID else { return }
+        stop()
     }
 
     private func updateState(_ state: TranscriptionState) {
@@ -106,9 +191,11 @@ final class LiveTranslateModel: ObservableObject {
         case .connecting: status = "连接 Deepgram…"
         case .listening: status = "正在听课"
         case .failed(let message):
+            if let text = assembler.flush() { commit(text) }
             audio.stop()
             isRunning = false
             status = message
+            finishActiveLesson()
         }
     }
 
@@ -144,13 +231,26 @@ final class LiveTranslateModel: ObservableObject {
         let segment = CaptionSegment(source: text)
         segments.append(segment)
         if segments.count > 200 { segments.removeFirst(segments.count - 200) }
+        let lessonID = activeLessonID
+        if let lessonID {
+            var library = archiveLibrary
+            library.append(ArchivedSegment(id: segment.id, source: text, translation: nil), to: lessonID)
+            saveArchive(library)
+        }
         let translator = makeTranslator()
         Task { @MainActor [weak self] in
             let output: String
             do { output = try await translator.translate(text) }
             catch { output = "翻译失败：\(error.localizedDescription)" }
-            guard let self, let index = self.segments.firstIndex(where: { $0.id == segment.id }) else { return }
-            self.segments[index].translation = output
+            guard let self else { return }
+            if let index = self.segments.firstIndex(where: { $0.id == segment.id }) {
+                self.segments[index].translation = output
+            }
+            if let lessonID {
+                var library = self.archiveLibrary
+                library.setTranslation(output, segmentID: segment.id, lessonID: lessonID)
+                self.saveArchive(library)
+            }
         }
     }
 
@@ -164,33 +264,19 @@ final class LiveTranslateModel: ObservableObject {
         }
     }
 
-    func testDeepgram() async {
-        let key = deepgramAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { settingsMessage = "请先填写 Deepgram API Key"; return }
-        var request = URLRequest(url: URL(string: "https://api.deepgram.com/v1/self")!)
-        request.setValue("Token \(key)", forHTTPHeaderField: "Authorization")
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            settingsMessage = code == 200 ? "Deepgram 连接成功" : "Deepgram 验证失败（HTTP \(code)）"
-        } catch {
-            settingsMessage = "Deepgram 无法连接：\(error.localizedDescription)"
-        }
-    }
-
-    func testTranslation() async {
-        do {
-            let result = try await makeTranslator().translate("Hello class.")
-            settingsMessage = "翻译成功：\(result)"
-        } catch {
-            settingsMessage = "翻译测试失败：\(error.localizedDescription)"
-        }
-    }
 }
 
 @main
 struct LiveTranslateApp: App {
-    @StateObject private var model = LiveTranslateModel()
+    @StateObject private var model: LiveTranslateModel
+    private let bridge: LocalBridge
+
+    init() {
+        let model = LiveTranslateModel()
+        _model = StateObject(wrappedValue: model)
+        bridge = LocalBridge(model: model)
+        bridge.start()
+    }
 
     var body: some Scene {
         WindowGroup("Live Translate") {
@@ -216,6 +302,12 @@ private struct LiveTranslateView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Button {
+                    SubtitleWindowController.shared.show(model: model)
+                } label: {
+                    Label("课堂字幕", systemImage: "captions.bubble")
+                }
+                .help("打开独立字幕窗口，可拖动并置于课件上方")
+                Button {
                     if model.isRunning { model.stop() }
                     else { Task { await model.start() } }
                 } label: {
@@ -226,34 +318,48 @@ private struct LiveTranslateView: View {
             }
             .padding()
             Picker("", selection: $selectedTab) {
-                Label("实时字幕", systemImage: "captions.bubble").tag(0)
-                Label("设置", systemImage: "gearshape").tag(1)
+                Label("实时记录", systemImage: "text.book.closed").tag(0)
+                Label("课程归档", systemImage: "archivebox").tag(1)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
-            if selectedTab == 0 { captions }
-            else { settings }
-        }
-        .onChange(of: model.status) { _, newValue in
-            if newValue.contains("Deepgram API Key") { selectedTab = 1 }
+            if selectedTab == 0 { history }
+            else { ArchiveView().environmentObject(model) }
         }
     }
 
-    private var captions: some View {
+    private var history: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("English → 简体中文").font(.caption).foregroundStyle(.secondary)
+                Label("完整记录 · English → 简体中文", systemImage: "text.book.closed")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 Spacer()
+                Picker("课程", selection: Binding(
+                    get: { model.archiveLibrary.selectedCourseID },
+                    set: { model.selectCourse($0) }
+                )) {
+                    ForEach(model.archiveLibrary.courses) { course in
+                        Text(course.name).tag(course.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 190)
+                .disabled(model.isRunning)
                 Text(model.translationBackend.label).font(.caption).foregroundStyle(.secondary)
                 Button { model.clear() } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless)
-                    .help("清空字幕")
+                    .help("清空当前显示；已归档课次仍保留")
             }
             .padding(.horizontal)
             .padding(.top, 12)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
+                        if model.segments.isEmpty && model.interim.isEmpty {
+                            Label("在 Bob 配置密钥并输入 live，或点击开始。字幕将显示在独立窗口。", systemImage: "captions.bubble")
+                                .foregroundStyle(.secondary)
+                        }
                         ForEach(model.segments) { segment in
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(segment.source).font(.body)
@@ -285,35 +391,5 @@ private struct LiveTranslateView: View {
                 }
             }
         }
-    }
-
-    private var settings: some View {
-        Form {
-            Section("语音转文字 · Deepgram") {
-                SecureField("Deepgram API Key", text: $model.deepgramAPIKey)
-                    .textContentType(.password)
-                Button("验证 Deepgram") { Task { await model.testDeepgram() } }
-                Text("英语麦克风音频直接发送到 Deepgram Nova-3。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("实时译文") {
-                Picker("翻译引擎", selection: $model.translationBackend) {
-                    ForEach(TranslationBackend.allCases) { backend in
-                        Text(backend.label).tag(backend)
-                    }
-                }
-                Text("默认 Apple System Translate，无需 API Key；需 macOS 26+ 和已安装英中语言包。")
-                    .font(.caption).foregroundStyle(.secondary)
-                if model.translationBackend == .volcengine {
-                    SecureField("火山 Access Key ID", text: $model.volcengineAccessKeyID)
-                    SecureField("火山 Secret Access Key", text: $model.volcengineSecretAccessKey)
-                }
-                Button("测试翻译") { Task { await model.testTranslation() } }
-            }
-            if !model.settingsMessage.isEmpty {
-                Text(model.settingsMessage).foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
     }
 }

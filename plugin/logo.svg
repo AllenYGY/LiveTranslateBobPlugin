@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Live Translate</title>
+  <desc id="desc">A speech bubble with an audio waveform and two subtitle lines.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#06334d"/>
+      <stop offset="0.52" stop-color="#087c99"/>
+      <stop offset="1" stop-color="#27dedc"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#13e5e9"/>
+      <stop offset="1" stop-color="#a9fffb"/>
+    </linearGradient>
+    <clipPath id="icon-shape"><rect width="1024" height="1024" rx="220"/></clipPath>
+  </defs>
+  <g clip-path="url(#icon-shape)">
+    <rect width="1024" height="1024" fill="url(#background)"/>
+    <path d="M0 120C310-30 720 20 1024 255V0H0Z" fill="#94fff7" opacity=".12"/>
+    <path d="M0 835C350 730 710 795 1024 920V1024H0Z" fill="#001d36" opacity=".18"/>
+    <path d="M330 225H690C770 225 820 275 820 355V530C820 610 770 660 690 660H420L285 745V650C225 635 190 590 190 530V355C190 275 245 225 330 225Z"
+          fill="none" stroke="#fff" stroke-width="52" stroke-linejoin="round"/>
+    <g fill="url(#wave)">
+      <rect x="316" y="407" width="50" height="114" rx="25"/>
+      <rect x="403" y="365" width="50" height="198" rx="25"/>
+      <rect x="490" y="325" width="50" height="278" rx="25"/>
+      <rect x="577" y="365" width="50" height="198" rx="25"/>
+      <rect x="664" y="407" width="50" height="114" rx="25"/>
+    </g>
+    <path d="M420 798H746M467 871H699" fill="none" stroke="#fff" stroke-width="46" stroke-linecap="round"/>
+  </g>
+</svg>
