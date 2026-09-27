@@ -1,6 +1,7 @@
 {
   "identifier": "com.allenygy.live.translate",
   "version": "2.3.1",
+  "appcast": "https://raw.githubusercontent.com/AllenYGY/LiveTranslateBobPlugin/main/appcast.json",
   "category": "translate",
   "name": "Live Translate",
   "summary": "English speech to Chinese live captions in Bob. Type live to start; stop to stop.",
