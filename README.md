@@ -1,25 +1,120 @@
 # Live Translate
 
-独立的 Bob 课堂实时翻译插件及 macOS 麦克风伴随应用，不依赖 OverShelf。
+在 **Bob** 中为英文课堂提供实时中文字幕的翻译插件，配套一个 macOS 麦克风伴随应用。不依赖 OverShelf。
+
+在 Bob 翻译弹窗输入 `live` 即可开始：伴随应用用麦克风采集英语语音，经 Deepgram 转写、实时翻译后，字幕同时显示在 Bob 卡片、独立字幕浮窗和课程归档中。
+
+## 工作原理
+
+Bob 插件 API 不提供麦克风采集，也没有自定义弹窗按钮，因此本方案拆成两部分：
+
+```
+麦克风 ──► 伴随应用（LiveTranslate.app）──┬──► Deepgram Nova-3 英文转写
+                                         └──► 翻译引擎 ──► 字幕 / 归档
+   ▲                                              ▲
+   │           127.0.0.1:17764　loopback          │
+Bob 插件（Live Translate）◄──── 轮询快照 ──────────┘
+```
+
+- **Bob 插件**：提供设置项、渲染流式结果、响应 `live` / `stop` 指令。它只与本机伴随应用通信，不接触任何密钥。
+- **伴随应用**：采集麦克风、直连 Deepgram（英文转写）、调用翻译引擎（默认 **Apple System Translate**，可选 **火山翻译**），并保存课程归档。
+
+## 功能特性
+
+- 实时双语字幕：英文原文 + 中文译文，随语音滚动更新
+- 独立字幕浮窗：可拖动、调整大小、浮在课件上方，跨空间显示
+- Bob 卡片保留最近两段，方便随手查看
+- 课程归档：按 **课程 → 课次 → 双语分段** 组织，可新建课程、重命名课次、一键复制整节课记录
+- 归档持久化：每段译文完成即保存，应用意外退出也不丢失已完成内容
+- 密钥只在 Bob 中配置一次（存入钥匙串），伴随应用没有重复的设置页
+
+## 系统要求
+
+- macOS 26 或更新版本（依赖系统翻译框架，当前为 arm64 构建）
+- 已安装「英语 → 简体中文」翻译语言包（Apple System Translate 需要）
+- [Deepgram](https://deepgram.com) API Key（英文语音识别）
+- Bob 1.21.0 或更新版本
+- 选择火山翻译时，还需火山引擎 Access Key ID / Secret Access Key
+
+## 构建与安装
+
+```bash
+./scripts/test-app.sh   # 生成 dist/LiveTranslate.app
+./scripts/test.sh       # 生成 dist/LiveTranslate.bobplugin
+```
+
+1. 将 `dist/LiveTranslate.app` 放到本机可持续运行的位置（例如「应用程序」），双击打开。
+2. 双击 `dist/LiveTranslate.bobplugin` 安装 Bob 插件。
+3. 重新构建后，先退出旧版应用再打开新版。
 
 ## 使用
 
-1. 运行 `./scripts/test-app.sh` 和 `./scripts/test.sh`，生成 `dist/LiveTranslate.app` 与 `dist/LiveTranslate.bobplugin`。将 app 放在本机可持续运行的位置并打开，双击安装 Bob 插件。重新构建后需要退出旧版 app 再打开新版。
-2. 在 **Bob → Services → Text Translate → Live Translate** 填写 **Deepgram API Key**。实时译文默认使用 **Apple System Translate**；如选择 Volcengine，再填写 Access Key ID 和 Secret Access Key。设置只需在 Bob 中完成，伴随应用没有重复的密钥设置页。
-3. 在 Bob 翻译弹窗输入 `live`（`/live` 也兼容；Bob 可能去掉斜杠）。授权伴随应用使用麦克风后，会自动弹出**独立课堂字幕窗口**，可拖动、调整大小并浮在课件上方。Bob 卡片也会保留最近两段。伴随应用的主窗口继续显示完整的英文／中文分段记录，方便课后复习；主窗口的「课堂字幕」按钮可重新打开字幕窗。输入 `stop`，或关闭/取消查询可停止录音。
+### 第一次配置（仅需在 Bob 中完成一次）
 
-## 课程归档
+打开 **Bob → Services → Text Translate → Live Translate**：
 
-主窗口的「课程归档」页按**课程 → 课次 → 双语分段**组织结果。可新建课程、重命名课次，并复制一整节课的双语记录。开始录音前，在「实时记录」页选择课程；每次录音会自动新建一节课。已结束课次可以在下次启动应用后继续查看。点击「清空当前显示」不会删除归档。
+| 设置项 | 说明 |
+| --- | --- |
+| Deepgram API Key (live speech) | 必填，课堂实时语音识别 |
+| Live translation engine | `Apple System Translate`（默认）或 `Volcengine` |
+| Volcengine Access Key ID / Secret Access Key | 选择火山翻译时必填 |
 
-归档只保存在本机 `~/Library/Application Support/LiveTranslate/archives.json`，不包含 API Key；文件写入采用原子替换和仅当前用户可读的权限。每段最终英文和译文都会及时保存，即使应用意外退出也尽量保留已完成的内容。若归档文件损坏或版本较新，应用不会自动覆盖原文件。
+### 开始 / 停止
 
-伴随应用在本机 `127.0.0.1:17764` 与 Bob 插件通信，仅用于麦克风启动和字幕传递。密钥由 Bob Services 设置发送到本机伴随应用并保存在 Keychain，不进入 URL 或日志。英语音频由伴随应用直连 Deepgram Nova-3；Apple 翻译需要 macOS 26+ 及英中语言包。选择火山翻译时，伴随应用直连火山云。**Bob 插件 API 不提供麦克风采集和自定义弹窗按钮**，因此必须保持伴随应用运行。
+- 在 Bob 翻译弹窗输入 `live`（`/live` 也兼容，Bob 可能去掉斜杠）。
+- 首次使用会请求麦克风权限，请允许。
+- 输入 `stop`，或关闭 / 取消当前查询，即可停止录音。
 
-Bob 插件最长可设置 300 秒超时，长课超过此限制时可能需要重新输入 `live`；Bob 版本相关的实际超时行为仍需实机确认。关闭独立字幕窗不会清空主窗口的复习记录。
+### 字幕与记录
 
-`plugin/logo.svg` 是透明圆角的矢量 Logo 源文件。`plugin/logo.png` 是从 SVG 导出的 1024×1024 透明 PNG，打包时用于 Bob 插件的 `icon.png` 和 macOS 应用图标。修改 SVG 后可运行 `rsvg-convert -w 1024 -h 1024 plugin/logo.svg -o plugin/logo.png` 更新位图。
+- **Bob 卡片**：保留最近两段的英文与中文译文。
+- **字幕浮窗**：录音开始后自动弹出；主窗口工具栏的「课堂字幕」按钮可随时重新打开。
+- **主窗口「实时记录」页**：完整的分段记录，录音前可选择所属课程；「清空当前显示」只清空屏幕，不影响归档。也可以通过主窗口的「开始」按钮直接录音（需已通过 Bob 保存 Deepgram 密钥）。
 
-## 验证
+### 课程归档
 
-`./scripts/test.sh` 覆盖插件配置、流式结果和取消回调；`./scripts/test-app.sh` 覆盖自动分段、归档持久化、编译与签名。可用 `curl http://127.0.0.1:17764/snapshot` 检查本机伴随应用。真实麦克风和云端端到端验证需要有效 Deepgram Key 与系统麦克风授权。
+- 录音前在「实时记录」页选择课程；每次录音自动在该课程下新建一节课。
+- **主窗口「课程归档」页**：浏览任意历史课程与课次，重命名课次，或复制整节课的双语记录。
+- 归档存放在本机 `~/Library/Application Support/LiveTranslate/archives.json`。
+- 写入采用**原子替换**，文件权限仅当前用户可读（`0600`），且不含任何 API Key。
+- 每段英文及最终译文都会及时保存，应用意外退出也能保留已完成内容。
+- 若归档损坏或来自更新版本，应用会保留原文件并继续运行，绝不覆盖。
+
+## 安全与隐私
+
+- 插件与伴随应用仅在本机 `127.0.0.1:17764` 通信；本地桥会拒绝带 `Origin` 头的请求。
+- 密钥由 Bob 设置界面发送到本机伴随应用并存入 **Keychain**，不会出现在 URL 或日志中。
+- 英语音频由伴随应用直连 Deepgram；选择火山翻译时直连火山云。密钥与音频均不经过 Bob 插件。
+
+## 已知限制
+
+- Bob 插件最长可设置 300 秒超时，长课超过此限制时需重新输入 `live`；实际超时行为与 Bob 版本有关，仍需实机确认。
+- 关闭字幕浮窗不会清空主窗口的复习记录。
+
+## 项目结构
+
+```
+app/            macOS 伴随应用（SwiftUI）
+  Services/     音频采集、Deepgram、翻译、归档、本地桥、字幕浮窗
+  Views/        归档界面
+plugin/         Bob 插件（info.json / main.js）与 Logo 源文件
+scripts/        构建、打包、测试脚本
+tests/          Swift / Node 测试
+dist/           构建产物（git 忽略）
+```
+
+`plugin/logo.svg` 是透明圆角的矢量 Logo 源文件；`plugin/logo.png` 为 1024×1024 导出位图，同时用作插件图标与 macOS 应用图标。修改 SVG 后重新导出：
+
+```bash
+rsvg-convert -w 1024 -h 1024 plugin/logo.svg -o plugin/logo.png
+```
+
+## 开发与验证
+
+```bash
+./scripts/test.sh       # 插件：配置、流式结果、取消回调
+./scripts/test-app.sh   # 应用：自动分段、归档持久化、编译与签名
+curl http://127.0.0.1:17764/snapshot   # 检查本地桥是否在运行
+```
+
+真实麦克风和云端端到端验证需要有效的 Deepgram Key 与系统麦克风授权。
