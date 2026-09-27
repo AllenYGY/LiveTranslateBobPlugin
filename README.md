@@ -38,6 +38,17 @@ Bob 插件（Live Translate）◄──── 轮询快照 ───────
 
 ## 构建与安装
 
+### 直接下载（推荐）
+
+到 GitHub Releases 页面下载即可，无需自己编译：
+
+- `LiveTranslate.bobplugin` — Bob 插件包
+- `LiveTranslate-macOS-1.2.0.zip` — 伴随应用，解压得到 `LiveTranslate.app`
+
+应用为 ad-hoc 签名、未公证，首次打开若被 Gatekeeper 拦截，右键点击应用 →「打开」，或在终端执行 `xattr -cr /Applications/LiveTranslate.app` 后重新打开。
+
+### 自行构建
+
 ```bash
 ./scripts/test-app.sh   # 生成 dist/LiveTranslate.app
 ./scripts/test.sh       # 生成 dist/LiveTranslate.bobplugin
