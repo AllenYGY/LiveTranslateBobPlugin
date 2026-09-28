@@ -2,12 +2,28 @@ import AppKit
 import SwiftUI
 
 struct ArchiveView: View {
+    private enum DeleteTarget {
+        case course(UUID, String, Int)
+        case lesson(UUID, String)
+        case segment(UUID, UUID)
+    }
+
     @EnvironmentObject private var model: LiveTranslateModel
     @State private var showingNewCourse = false
     @State private var newCourseName = ""
     @State private var selectedLessonID: UUID?
     @State private var showingRename = false
     @State private var lessonTitle = ""
+    @State private var renamingLessonID: UUID?
+    @State private var showingCourseRename = false
+    @State private var courseName = ""
+    @State private var renamingCourseID: UUID?
+    @State private var deleteTarget: DeleteTarget?
+    @State private var showingDelete = false
+    @State private var editingSegmentID: UUID?
+    @State private var editingLessonID: UUID?
+    @State private var segmentSource = ""
+    @State private var segmentTranslation = ""
 
     private var course: ArchivedCourse? { model.archiveLibrary.selectedCourse }
 
@@ -47,6 +63,18 @@ struct ArchiveView: View {
                     .buttonStyle(.plain)
                     .listRowBackground(item.id == model.archiveLibrary.selectedCourseID ? Color.accentColor.opacity(0.18) : Color.clear)
                     .disabled(model.isRunning && item.id != model.archiveLibrary.selectedCourseID)
+                    .contextMenu {
+                        Button("重命名课程", systemImage: "pencil") {
+                            renamingCourseID = item.id
+                            courseName = item.name
+                            showingCourseRename = true
+                        }
+                        Button("删除课程", systemImage: "trash", role: .destructive) {
+                            deleteTarget = .course(item.id, item.name, item.lessons.count)
+                            showingDelete = true
+                        }
+                        .disabled(model.archiveLibrary.courses.count == 1 || model.isRunning)
+                    }
                 }
                 .listStyle(.sidebar)
             }
@@ -57,6 +85,19 @@ struct ArchiveView: View {
                     HStack {
                         Label(course.name, systemImage: "archivebox")
                             .font(.title3.bold())
+                        Button {
+                            renamingCourseID = course.id
+                            courseName = course.name
+                            showingCourseRename = true
+                        } label: { Image(systemName: "pencil") }
+                        .help("重命名课程")
+                        .disabled(model.isRunning)
+                        Button {
+                            deleteTarget = .course(course.id, course.name, course.lessons.count)
+                            showingDelete = true
+                        } label: { Image(systemName: "trash") }
+                        .help("删除课程及其所有课次")
+                        .disabled(model.isRunning || model.archiveLibrary.courses.count == 1)
                         Spacer()
                         Text("\(course.lessons.count) 节课")
                             .font(.caption)
@@ -90,10 +131,17 @@ struct ArchiveView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button { lessonTitle = lesson.title; showingRename = true } label: {
+                            Button { renamingLessonID = lesson.id; lessonTitle = lesson.title; showingRename = true } label: {
                                 Image(systemName: "pencil")
                             }
                             .help("重命名课次")
+                            .disabled(model.isRunning)
+                            Button {
+                                deleteTarget = .lesson(lesson.id, lesson.title)
+                                showingDelete = true
+                            } label: { Image(systemName: "trash") }
+                            .help("删除课次及其所有分段")
+                            .disabled(model.isRunning)
                             Button { copy(lesson) } label: {
                                 Image(systemName: "doc.on.doc")
                             }
@@ -105,10 +153,27 @@ struct ArchiveView: View {
                                     ContentUnavailableView("尚无语音记录", systemImage: "waveform")
                                 }
                                 ForEach(lesson.segments) { segment in
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(segment.source).foregroundStyle(.secondary)
-                                        Text(segment.translation ?? "翻译中…")
-                                            .font(.body.weight(.medium))
+                                    HStack(alignment: .top, spacing: 8) {
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            Text(segment.source).foregroundStyle(.secondary)
+                                            Text(segment.translation ?? "翻译中…")
+                                                .font(.body.weight(.medium))
+                                        }
+                                        Spacer(minLength: 4)
+                                        Button {
+                                            editingLessonID = lesson.id
+                                            editingSegmentID = segment.id
+                                            segmentSource = segment.source
+                                            segmentTranslation = segment.translation ?? ""
+                                        } label: { Image(systemName: "pencil") }
+                                        .help("编辑双语分段")
+                                        .disabled(model.isRunning)
+                                        Button {
+                                            deleteTarget = .segment(lesson.id, segment.id)
+                                            showingDelete = true
+                                        } label: { Image(systemName: "trash") }
+                                        .help("删除双语分段")
+                                        .disabled(model.isRunning)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(10)
@@ -142,10 +207,70 @@ struct ArchiveView: View {
         .alert("课次名称", isPresented: $showingRename) {
             TextField("课次名称", text: $lessonTitle)
             Button("保存") {
-                if let id = lesson?.id { model.renameLesson(id, to: lessonTitle) }
+                if let id = renamingLessonID { model.renameLesson(id, to: lessonTitle) }
             }
             Button("取消", role: .cancel) { }
         }
+        .alert("课程名称", isPresented: $showingCourseRename) {
+            TextField("课程名称", text: $courseName)
+            Button("保存") {
+                if let id = renamingCourseID { model.renameCourse(id, to: courseName) }
+            }
+            Button("取消", role: .cancel) { }
+        }
+        .confirmationDialog(deleteTitle, isPresented: $showingDelete, titleVisibility: .visible) {
+            Button("删除", role: .destructive) { performDelete() }
+            Button("取消", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text("删除后无法撤销。")
+        }
+        .sheet(isPresented: Binding(get: { editingSegmentID != nil }, set: { if !$0 { editingSegmentID = nil } })) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("编辑双语分段").font(.headline)
+                Text("英文原文")
+                TextEditor(text: $segmentSource).frame(height: 90).border(.secondary)
+                Text("中文译文")
+                TextEditor(text: $segmentTranslation).frame(height: 90).border(.secondary)
+                HStack {
+                    Spacer()
+                    Button("取消") { editingSegmentID = nil }
+                    Button("保存") {
+                        if let lessonID = editingLessonID, let segmentID = editingSegmentID {
+                            model.editSegment(segmentID, in: lessonID, source: segmentSource, translation: segmentTranslation)
+                        }
+                        editingSegmentID = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(segmentSource.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.isRunning)
+                }
+            }
+            .padding(20)
+            .frame(width: 480)
+        }
+    }
+
+    private var deleteTitle: String {
+        switch deleteTarget {
+        case let .course(_, name, count): "删除课程“\(name)”及其中 \(count) 节课？"
+        case let .lesson(_, title): "删除课次“\(title)”及其所有记录？"
+        case .segment: "删除这条双语分段？"
+        case nil: "确认删除？"
+        }
+    }
+
+    private func performDelete() {
+        guard let target = deleteTarget else { return }
+        switch target {
+        case let .course(id, _, _):
+            model.deleteCourse(id)
+            selectedLessonID = nil
+        case let .lesson(id, _):
+            model.deleteLesson(id)
+            if selectedLessonID == id { selectedLessonID = nil }
+        case let .segment(lessonID, segmentID):
+            model.deleteSegment(segmentID, in: lessonID)
+        }
+        deleteTarget = nil
     }
 
     private func copy(_ lesson: ArchivedLesson) {

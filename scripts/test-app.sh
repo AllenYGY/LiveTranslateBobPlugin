@@ -16,13 +16,20 @@ swiftc -swift-version 5 \
 CHECK_DIR="$(mktemp -d)"
 trap 'rm -rf "$CHECK_DIR"' EXIT
 ditto -x -k "$ROOT_DIR/dist/LiveTranslate-app.zip" "$CHECK_DIR"
-xattr -cr "$CHECK_DIR/LiveTranslate.app"
 codesign --verify --deep --strict "$CHECK_DIR/LiveTranslate.app"
+SIGNING_INFO="$(codesign -dv --verbose=4 "$CHECK_DIR/LiveTranslate.app" 2>&1)"
+grep -q 'Authority=Developer ID Application:' <<< "$SIGNING_INFO"
+grep -q 'TeamIdentifier=' <<< "$SIGNING_INFO"
+grep -q 'flags=.*runtime' <<< "$SIGNING_INFO"
+if grep -q 'Signature=adhoc' <<< "$SIGNING_INFO"; then
+  echo "Ad-hoc signing is not permitted" >&2
+  exit 1
+fi
 python3 - "$CHECK_DIR/LiveTranslate.app" <<'PY'
 import pathlib, plistlib, sys
 app = pathlib.Path(sys.argv[1])
 info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
-assert info['CFBundleShortVersionString'] == '1.3.0'
+assert info['CFBundleShortVersionString'] == '1.3.1'
 assert info['CFBundleIconFile'] == 'LiveTranslate.icns'
 assert (app / 'Contents/Resources/LiveTranslate.icns').is_file()
 PY

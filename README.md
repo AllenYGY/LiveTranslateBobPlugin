@@ -14,16 +14,25 @@
 
 到 [Releases 页面](https://github.com/AllenYGY/LiveTranslateBobPlugin/releases/latest) 下载两个文件（无需自己编译）：
 
+也可通过 Homebrew 安装伴随应用（Bob 插件仍需从 Releases 下载并在 Bob 中导入）：
+
+```bash
+brew tap AllenYGY/tap
+brew install --cask live-translate
+```
+
+维护者发布流程：`./scripts/test-app.sh` 构建并签名后，先在本机钥匙串配置 `notarytool` profile，再运行 `./scripts/notarize-app.sh <profile>`；使用脚本输出的最终 ZIP SHA-256 更新 tap 的 `Casks/live-translate.rb`，将同一 ZIP 作为对应版本的 GitHub Release 资产上传。应先发布 Release，再更新 tap。
+
 | 文件 | 说明 |
 | --- | --- |
 | `LiveTranslate.bobplugin` | Bob 插件包 |
-| `LiveTranslate-macOS-1.3.0.zip` | 伴随应用，解压后得到 `LiveTranslate.app` |
+| `LiveTranslate-macOS-1.3.1.zip` | 伴随应用，解压后得到 `LiveTranslate.app` |
 
 ### 2. 安装伴随应用
 
 将 `LiveTranslate.app` 解压并放入「应用程序」，双击打开。**它需要保持运行**，负责麦克风采集与语音识别。
 
-> 应用为 ad-hoc 签名、未公证：首次打开若被 Gatekeeper 拦截，右键点击应用 →「打开」，或在终端执行 `xattr -cr /Applications/LiveTranslate.app` 后重新打开。
+> Release 中的应用已使用 Developer ID Application 证书签名并通过 Apple 公证。请将应用固定放在 `/Applications`，不要每次从临时解压目录启动。自行构建仍需本机安装 Developer ID Application 证书；若有多个证书，可设置 `CODESIGN_IDENTITY` 为目标证书 SHA-1 指纹。
 
 ### 3. 安装 Bob 插件
 
@@ -63,7 +72,7 @@ Bob 插件（Live Translate）◄──── 轮询快照 ───────
 - 实时双语字幕：英文原文 + 中文译文，随语音滚动更新
 - 独立字幕浮窗：可拖动、调整大小、浮在课件上方，跨空间显示；**背景透明、透明度可调且自动记忆**
 - Bob 卡片保留最近两段，方便随手查看
-- 课程归档：按 **课程 → 课次 → 双语分段** 组织，可新建课程、重命名课次、一键复制整节课记录
+- 课程归档：按 **课程 → 课次 → 双语分段** 组织，可编辑或删除各层级内容，并一键复制整节课记录
 - 归档持久化：每段译文完成即保存，应用意外退出也不丢失已完成内容
 - 密钥只在 Bob 中配置一次（存入钥匙串），伴随应用没有重复的设置页
 
@@ -84,7 +93,7 @@ Bob 插件（Live Translate）◄──── 轮询快照 ───────
 ### 课程归档
 
 - 录音前在「实时记录」页选择课程；每次录音自动在该课程下新建一节课。
-- **主窗口「课程归档」页**：浏览任意历史课程与课次，重命名课次，或复制整节课的双语记录。
+- **主窗口「课程归档」页**：浏览历史记录；课程、课次和双语分段均可编辑或删除。课程右键菜单和标题栏有操作按钮，分段卡片右侧有编辑与删除按钮。删除须二次确认；录音时禁用归档编辑与删除，且至少保留一门课程。
 - 归档存放在本机 `~/Library/Application Support/LiveTranslate/archives.json`。
 - 写入采用**原子替换**，文件权限仅当前用户可读（`0600`），且不含任何 API Key。
 - 每段英文及最终译文都会及时保存，应用意外退出也能保留已完成内容。

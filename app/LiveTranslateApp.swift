@@ -131,9 +131,40 @@ final class LiveTranslateModel: ObservableObject {
     }
 
     func renameLesson(_ id: UUID, to title: String) {
+        guard !isRunning else { return }
         var library = archiveLibrary
-        library.renameLesson(id, to: title)
-        saveArchive(library)
+        if library.renameLesson(id, to: title) { saveArchive(library) }
+    }
+
+    func renameCourse(_ id: UUID, to name: String) {
+        guard !isRunning else { return }
+        var library = archiveLibrary
+        if library.renameCourse(id, to: name) { saveArchive(library) }
+        else { archiveMessage = "课程名称不能为空，且不能与已有课程重复。" }
+    }
+
+    func deleteCourse(_ id: UUID) {
+        guard !isRunning else { return }
+        var library = archiveLibrary
+        if library.deleteCourse(id) { saveArchive(library) }
+    }
+
+    func deleteLesson(_ id: UUID) {
+        guard !isRunning, id != activeLessonID else { return }
+        var library = archiveLibrary
+        if library.deleteLesson(id) { saveArchive(library) }
+    }
+
+    func editSegment(_ id: UUID, in lessonID: UUID, source: String, translation: String) {
+        guard !isRunning, lessonID != activeLessonID else { return }
+        var library = archiveLibrary
+        if library.editSegment(id, in: lessonID, source: source, translation: translation) { saveArchive(library) }
+    }
+
+    func deleteSegment(_ id: UUID, in lessonID: UUID) {
+        guard !isRunning, lessonID != activeLessonID else { return }
+        var library = archiveLibrary
+        if library.deleteSegment(id, in: lessonID) { saveArchive(library) }
     }
 
     private func saveArchive(_ library: ArchiveLibrary) {

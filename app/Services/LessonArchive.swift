@@ -52,6 +52,24 @@ struct ArchiveLibrary: Codable {
     }
 
     @discardableResult
+    mutating func renameCourse(_ id: UUID, to rawName: String) -> Bool {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              let index = courses.firstIndex(where: { $0.id == id }),
+              !courses.contains(where: { $0.id != id && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else { return false }
+        courses[index].name = name
+        return true
+    }
+
+    @discardableResult
+    mutating func deleteCourse(_ id: UUID) -> Bool {
+        guard courses.count > 1, let index = courses.firstIndex(where: { $0.id == id }) else { return false }
+        courses.remove(at: index)
+        if selectedCourseID == id { selectedCourseID = courses[0].id }
+        return true
+    }
+
+    @discardableResult
     mutating func beginLesson(now: Date = Date()) -> UUID? {
         guard let index = courses.firstIndex(where: { $0.id == selectedCourseID }) else { return nil }
         let formatter = DateFormatter()
@@ -83,10 +101,37 @@ struct ArchiveLibrary: Codable {
         courses[location.course].lessons[location.lesson].endedAt = now
     }
 
-    mutating func renameLesson(_ id: UUID, to rawTitle: String) {
+    @discardableResult
+    mutating func renameLesson(_ id: UUID, to rawTitle: String) -> Bool {
         let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, let location = lessonLocation(id) else { return }
+        guard !title.isEmpty, let location = lessonLocation(id) else { return false }
         courses[location.course].lessons[location.lesson].title = title
+        return true
+    }
+
+    @discardableResult
+    mutating func deleteLesson(_ id: UUID) -> Bool {
+        guard let location = lessonLocation(id) else { return false }
+        courses[location.course].lessons.remove(at: location.lesson)
+        return true
+    }
+
+    @discardableResult
+    mutating func editSegment(_ id: UUID, in lessonID: UUID, source rawSource: String, translation rawTranslation: String) -> Bool {
+        let source = rawSource.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty, let location = lessonLocation(lessonID),
+              let index = courses[location.course].lessons[location.lesson].segments.firstIndex(where: { $0.id == id }) else { return false }
+        courses[location.course].lessons[location.lesson].segments[index] = ArchivedSegment(
+            id: id, source: source, translation: rawTranslation.trimmingCharacters(in: .whitespacesAndNewlines))
+        return true
+    }
+
+    @discardableResult
+    mutating func deleteSegment(_ id: UUID, in lessonID: UUID) -> Bool {
+        guard let location = lessonLocation(lessonID),
+              let index = courses[location.course].lessons[location.lesson].segments.firstIndex(where: { $0.id == id }) else { return false }
+        courses[location.course].lessons[location.lesson].segments.remove(at: index)
+        return true
     }
 
     private func lessonLocation(_ id: UUID) -> (course: Int, lesson: Int)? {
